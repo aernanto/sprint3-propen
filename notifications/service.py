@@ -871,3 +871,34 @@ def notify_resignation_approved(resignation):
         email_subject_member='Pengunduran Diri Anda Telah Disetujui',
         email_body_member=email_member,
     )
+
+
+def notify_resignation_rejected(resignation, reason=''):
+    """Manager reject pengunduran diri → member dapet notif + email."""
+    member_msg = 'Permintaan pengunduran diri Anda ditolak.'
+    if reason:
+        member_msg += f' Alasan: {reason}'
+
+    email_member = (
+        f'Yth. {resignation.member.full_name},\n\n'
+        'Mohon maaf, permintaan pengunduran diri Anda tidak dapat disetujui.\n'
+    )
+    if reason:
+        email_member += f'Alasan: {reason}\n'
+    email_member += (
+        '\nApabila ada pertanyaan, silakan hubungi petugas kami.\n\n'
+        'Salam,\nTim SI-MAPAN'
+    )
+
+    _broadcast(
+        member_user=resignation.member.user,
+        member_email=resignation.member.user.email,
+        notif_type='RESIGNATION',
+        member_title='Pengunduran Diri Ditolak',
+        member_message=member_msg,
+        member_redirect_url='/dashboard/member',
+        staff_title='', staff_message='', staff_redirect_url='',
+        broadcast_to=None,
+        email_subject_member='Permintaan Pengunduran Diri Anda Ditolak',
+        email_body_member=email_member,
+    )

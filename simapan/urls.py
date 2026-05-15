@@ -34,5 +34,7 @@ urlpatterns = [
     path('api/loans/', include('loans.urls')),
     path('api/installments/', include('loans.pay_urls')),
     path('api/auth/password/', include('members.password_reset_urls')),
+    path('api/resignations/', include('resignations.urls')),
+    path('api/manager/resignations/', include('resignations.manager_urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     
