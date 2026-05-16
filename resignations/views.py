@@ -84,16 +84,6 @@ class ResignationCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Block if there's a pending withdrawal request
-        try:
-            from withdrawals.models import WithdrawalRequest, WithdrawalStatus
-            if WithdrawalRequest.objects.filter(member=member, status=WithdrawalStatus.PENDING).exists():
-                return Response(
-                    {'error': 'Anda memiliki pengajuan penarikan simpanan yang sedang diproses. Selesaikan terlebih dahulu sebelum menutup akun.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        except Exception:
-            pass
 
         settlement = calculate_settlement(member)
 

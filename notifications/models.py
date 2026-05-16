@@ -7,7 +7,6 @@ class Notification(models.Model):
         ('REGISTRATION', 'Registration'),
         ('SAVING',       'Saving'),
         ('LOAN',         'Loan'),
-        ('WITHDRAWAL',   'Withdrawal'),
         ('RESIGNATION',  'Resignation'),
         ('GENERAL',      'General'),
     ]

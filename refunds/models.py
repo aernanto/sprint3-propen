@@ -4,7 +4,6 @@ from django.db import models
 class RefundSourceType(models.TextChoices):
     RESIGNATION = 'RESIGNATION', 'Pengembalian Pengunduran Diri'
     INSTALLMENT = 'INSTALLMENT', 'Pengembalian Cicilan Ditolak'
-    WITHDRAWAL = 'WITHDRAWAL', 'Pencairan Penarikan Simpanan'
 
 
 class RefundStatus(models.TextChoices):
@@ -24,11 +23,6 @@ class Refund(models.Model):
         'loans.Installment', on_delete=models.CASCADE,
         null=True, blank=True, related_name='refund',
     )
-    withdrawal = models.OneToOneField(
-        'withdrawals.WithdrawalRequest', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='refund',
-    )
-
     member = models.ForeignKey(
         'members.Member', on_delete=models.CASCADE, related_name='refunds'
     )

@@ -11,7 +11,6 @@ class Migration(migrations.Migration):
         ('members', '0005_alter_bankaccount_id_alter_member_id'),
         ('resignations', '0001_initial'),
         ('loans', '0001_initial'),
-        ('withdrawals', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -24,7 +23,6 @@ class Migration(migrations.Migration):
                     choices=[
                         ('RESIGNATION', 'Pengembalian Pengunduran Diri'),
                         ('INSTALLMENT', 'Pengembalian Cicilan Ditolak'),
-                        ('WITHDRAWAL', 'Pencairan Penarikan Simpanan'),
                     ],
                     max_length=20,
                 )),
@@ -56,12 +54,6 @@ class Migration(migrations.Migration):
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='refund',
                     to='loans.installment',
-                )),
-                ('withdrawal', models.OneToOneField(
-                    blank=True, null=True,
-                    on_delete=django.db.models.deletion.CASCADE,
-                    related_name='refund',
-                    to='withdrawals.withdrawalrequest',
                 )),
                 ('disbursed_by', models.ForeignKey(
                     blank=True, null=True,
