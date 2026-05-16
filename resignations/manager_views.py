@@ -55,9 +55,11 @@ class ManagerResignationListView(APIView):
         history_search = request.query_params.get('history_search', '').strip()
         status_filter = request.query_params.get('status', '').strip().upper()
 
+        # Active table: PENDING (awaiting manager review) + APPROVED (awaiting staff disbursement)
+        active_statuses = [ResignationStatus.PENDING, ResignationStatus.APPROVED]
         pending_qs = (
             ResignationRequest.objects
-            .filter(status=ResignationStatus.PENDING)
+            .filter(status__in=active_statuses)
             .select_related('member')
             .order_by('-submitted_at')
         )
@@ -67,12 +69,21 @@ class ManagerResignationListView(APIView):
                 Q(member__full_name__icontains=search) | Q(member__member_id__icontains=search)
             )
 
-        if status_filter and status_filter in {ResignationStatus.PENDING, ResignationStatus.REJECTED}:
-            pending_qs = pending_qs.filter(status=status_filter)
+        valid_active_statuses = {
+            ResignationStatus.PENDING, ResignationStatus.APPROVED, ResignationStatus.REJECTED
+        }
+        if status_filter and status_filter in valid_active_statuses:
+            pending_qs = ResignationRequest.objects.filter(
+                status=status_filter
+            ).select_related('member').order_by('-submitted_at')
+            if search:
+                pending_qs = pending_qs.filter(
+                    Q(member__full_name__icontains=search) | Q(member__member_id__icontains=search)
+                )
 
         history_qs = (
             ResignationRequest.objects
-            .filter(status=ResignationStatus.RESIGNED)
+            .filter(status__in=[ResignationStatus.RESIGNED, ResignationStatus.REJECTED])
             .select_related('member')
             .order_by('-resolved_at', '-reviewed_at')
         )
@@ -84,6 +95,7 @@ class ManagerResignationListView(APIView):
             )
 
         total_pending = ResignationRequest.objects.filter(status=ResignationStatus.PENDING).count()
+        total_approved = ResignationRequest.objects.filter(status=ResignationStatus.APPROVED).count()
         total_inactive = ResignationRequest.objects.filter(status=ResignationStatus.RESIGNED).count()
 
         paginator = StandardPagination()
@@ -99,6 +111,7 @@ class ManagerResignationListView(APIView):
         return Response({
             'summary': {
                 'total_pending': total_pending,
+                'total_approved': total_approved,
                 'total_inactive': total_inactive,
             },
             'pending_requests': pending_payload,
@@ -225,6 +238,21 @@ class ManagerResignationStatusUpdateView(APIView):
 
             if action == 'approve':
                 settlement = calculate_settlement(resignation.member)
+
+                # Re-validate at approval time: member's loans may have changed
+                if settlement['total_loan_outstanding'] > settlement['total_savings']:
+                    return Response(
+                        {
+                            'error': (
+                                'Tidak dapat menyetujui: total pinjaman anggota saat ini melebihi '
+                                'total simpanan. Anggota perlu melunasi pinjaman terlebih dahulu.'
+                            ),
+                            'total_savings': str(settlement['total_savings']),
+                            'total_loan_outstanding': str(settlement['total_loan_outstanding']),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
                 resignation.total_pokok_snapshot = settlement['total_pokok']
                 resignation.total_wajib_snapshot = settlement['total_wajib']
                 resignation.total_sukarela_snapshot = settlement['total_sukarela']
@@ -233,11 +261,19 @@ class ManagerResignationStatusUpdateView(APIView):
                 resignation.estimated_payout = settlement['estimated_payout']
                 resignation.status = ResignationStatus.APPROVED
                 resignation.rejection_reason = ''
+                resignation.save()
+
+                # Create refund record for staff to disburse
+                try:
+                    from refunds.services import create_refund_from_resignation
+                    create_refund_from_resignation(resignation)
+                except Exception:
+                    pass
+
             else:
                 resignation.status = ResignationStatus.REJECTED
                 resignation.rejection_reason = reason
-
-            resignation.save()
+                resignation.save()
 
         try:
             if action == 'approve':

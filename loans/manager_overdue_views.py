@@ -130,21 +130,16 @@ class ManagerOverdueLoansView(APIView):
             )
             for loan in all_overdue
         )
-        total_critical = sum(
-            1
-            for loan in all_overdue
-            if (
-                _severity(
-                    (
-                        today
-                        - loan.installments.filter(
-                            status__in=[InstallmentStatus.UNPAID, InstallmentStatus.PENDING],
-                            due_date__lt=today,
-                        ).order_by('due_date').first().due_date
-                    ).days
-                ) == 'CRITICAL'
-            )
-        )
+
+        # Safely compute critical count; guard against missing overdue installments
+        total_critical = 0
+        for loan in all_overdue:
+            earliest = loan.installments.filter(
+                status__in=[InstallmentStatus.UNPAID, InstallmentStatus.PENDING],
+                due_date__lt=today,
+            ).order_by('due_date').first()
+            if earliest and _severity((today - earliest.due_date).days) == 'CRITICAL':
+                total_critical += 1
 
         paginator = OverduePagination()
         page = paginator.paginate_queryset(qs, request)

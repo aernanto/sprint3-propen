@@ -290,6 +290,14 @@ class StaffInstallmentStatusUpdateView(APIView):
             installment.submitted_at = None
             installment.save(update_fields=['status', 'rejection_reason', 'verified_by', 'submitted_at', 'updated_at'])
 
+            # For BANK_TRANSFER rejections, create a refund record so staff can return the money
+            if installment.payment_method == 'BANK_TRANSFER':
+                try:
+                    from refunds.services import create_refund_from_installment
+                    create_refund_from_installment(installment)
+                except Exception:
+                    pass
+
         return Response(
             {
                 'message': 'Pembayaran cicilan ditolak. Status dikembalikan ke UNPAID.',

@@ -69,6 +69,13 @@ class ResignationCreateView(APIView):
         except Exception:
             return Response({'error': 'Profil anggota tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Only ACTIVE members can resign; INACTIVE means already resigned, VERIFIED means not yet activated
+        if member.status != 'ACTIVE':
+            return Response(
+                {'error': f'Hanya anggota berstatus ACTIVE yang dapat mengajukan penutupan akun. Status Anda: {member.status}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if member.resignation_requests.filter(
             status__in=[ResignationStatus.PENDING, ResignationStatus.APPROVED, ResignationStatus.RESIGNED]
         ).exists():
@@ -76,6 +83,17 @@ class ResignationCreateView(APIView):
                 {'error': 'Anda sudah memiliki pengajuan penutupan akun yang masih aktif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Block if there's a pending withdrawal request
+        try:
+            from withdrawals.models import WithdrawalRequest, WithdrawalStatus
+            if WithdrawalRequest.objects.filter(member=member, status=WithdrawalStatus.PENDING).exists():
+                return Response(
+                    {'error': 'Anda memiliki pengajuan penarikan simpanan yang sedang diproses. Selesaikan terlebih dahulu sebelum menutup akun.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception:
+            pass
 
         settlement = calculate_settlement(member)
 
