@@ -9,20 +9,42 @@ from .serializers import ResignationRequestSerializer
 from .services import calculate_settlement
 
 
+def _get_member(user):
+    """Return user.member or None if the User has no linked Member row."""
+    try:
+        return user.member
+    except Exception:
+        return None
+
+
 class ResignationSettlementView(APIView):
     """
     GET /api/resignations/settlement/
 
     Mengembalikan ringkasan total simpanan, total pinjaman, dan estimasi payout
-    untuk anggota yang akan mengajukan penutupan akun.
+    untuk anggota yang akan mengajukan penutupan akun. Untuk user tanpa Member
+    row (mis. admin/staff yang nyasar), return payload kosong agar UI tidak crash.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            member = request.user.member
-        except Exception:
-            return Response({'error': 'Profil anggota tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        member = _get_member(request.user)
+        if member is None:
+            return Response({
+                'member_name': getattr(request.user, 'full_name', request.user.email),
+                'member_id': None,
+                'total_pokok': 0,
+                'total_wajib': 0,
+                'total_sukarela': 0,
+                'total_savings': 0,
+                'total_loan_outstanding': 0,
+                'estimated_payout': 0,
+                'can_resign': False,
+                'has_pending_request': False,
+                'has_active_resignation': False,
+                'pending_request_id': None,
+                'is_member': False,
+            })
 
         settlement = calculate_settlement(member)
 
@@ -50,6 +72,7 @@ class ResignationSettlementView(APIView):
             'has_pending_request': existing_pending is not None,
             'has_active_resignation': existing_approved is not None,
             'pending_request_id': existing_pending.id if existing_pending else None,
+            'is_member': True,
         })
 
 
@@ -64,10 +87,12 @@ class ResignationCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            member = request.user.member
-        except Exception:
-            return Response({'error': 'Profil anggota tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        member = _get_member(request.user)
+        if member is None:
+            return Response(
+                {'error': 'Akun Anda tidak terdaftar sebagai anggota koperasi.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Only ACTIVE members can resign; INACTIVE means already resigned, VERIFIED means not yet activated
         if member.status != 'ACTIVE':
@@ -126,14 +151,14 @@ class ResignationMeView(APIView):
     GET /api/resignations/me/
 
     Mengembalikan request penutupan akun terbaru milik anggota.
+    Untuk user tanpa Member row, return {'request': None} agar UI tidak crash.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            member = request.user.member
-        except Exception:
-            return Response({'error': 'Profil anggota tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        member = _get_member(request.user)
+        if member is None:
+            return Response({'request': None})
 
         latest = member.resignation_requests.order_by('-submitted_at').first()
         if latest is None:
