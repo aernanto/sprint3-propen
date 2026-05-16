@@ -52,7 +52,6 @@ class StaffRefundListView(APIView):
                 'member',
                 'installment', 'installment__loan',
                 'resignation',
-                'withdrawal',
             )
             .order_by('-approved_at')
         )
@@ -124,7 +123,6 @@ class StaffRefundDetailView(APIView):
                 'member',
                 'installment', 'installment__loan', 'installment__bank_account',
                 'resignation',
-                'withdrawal',
                 'disbursed_by',
             ).get(pk=pk)
         except Refund.DoesNotExist:
@@ -173,7 +171,6 @@ class StaffRefundStatusUpdateView(APIView):
                 'member', 'member__user',
                 'resignation', 'resignation__member',
                 'installment', 'installment__loan',
-                'withdrawal',
             ).get(pk=pk)
         except Refund.DoesNotExist:
             return Response({'error': 'Data pengembalian dana tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
@@ -203,8 +200,6 @@ class StaffRefundStatusUpdateView(APIView):
             if refund.source_type == RefundSourceType.RESIGNATION:
                 _complete_resignation(refund)
 
-            elif refund.source_type == RefundSourceType.WITHDRAWAL:
-                _complete_withdrawal(refund)
             # INSTALLMENT refund: no balance adjustment needed — the money
             # was a failed bank transfer; balance was already restored in
             # StaffInstallmentStatusUpdateView (SAVINGS method) or was never
@@ -245,14 +240,6 @@ def _resolve_bank_info(refund, member):
             'account_holder': ba.account_holder,
         }
 
-    if refund.source_type == RefundSourceType.WITHDRAWAL and refund.withdrawal:
-        wd = refund.withdrawal
-        return {
-            'bank_name': wd.bank_name,
-            'account_number': wd.account_number,
-            'account_holder': wd.account_holder,
-        }
-
     return None
 
 
@@ -285,20 +272,3 @@ def _complete_resignation(refund):
     except Exception:
         pass
 
-
-def _complete_withdrawal(refund):
-    """Deduct the withdrawn amount from the member's sukarela savings balance."""
-    from savings.models import SavingsBalance
-
-    withdrawal = refund.withdrawal
-    if not withdrawal:
-        return
-
-    try:
-        balance = SavingsBalance.objects.select_for_update().get(member=refund.member)
-        new_sukarela = balance.total_sukarela - withdrawal.amount
-        # Guard against going below zero due to race conditions
-        balance.total_sukarela = max(new_sukarela, 0)
-        balance.save(update_fields=['total_sukarela', 'last_updated'])
-    except SavingsBalance.DoesNotExist:
-        pass

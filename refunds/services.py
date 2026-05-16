@@ -48,22 +48,3 @@ def create_refund_from_installment(installment):
         approved_at=timezone.now(),
     )
 
-
-def create_refund_from_withdrawal(withdrawal):
-    """
-    Create a Refund record when staff APPROVES a withdrawal request.
-    Idempotent: returns the existing refund if already created.
-    """
-    from .models import Refund, RefundSourceType
-
-    existing = Refund.objects.filter(withdrawal=withdrawal).first()
-    if existing:
-        return existing
-
-    return Refund.objects.create(
-        source_type=RefundSourceType.WITHDRAWAL,
-        withdrawal=withdrawal,
-        member=withdrawal.member,
-        amount=withdrawal.amount,
-        approved_at=timezone.now(),
-    )
