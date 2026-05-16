@@ -263,12 +263,10 @@ def _complete_resignation(refund):
         member.user.is_active = False
         member.user.save(update_fields=['is_active'])
 
-    try:
-        balance = member.savings_balance
+    balance = getattr(member, 'savings_balance', None)
+    if balance is not None:
         balance.total_pokok = 0
         balance.total_wajib = 0
         balance.total_sukarela = 0
         balance.save(update_fields=['total_pokok', 'total_wajib', 'total_sukarela', 'last_updated'])
-    except Exception:
-        pass
 
