@@ -33,6 +33,8 @@ INSTALLED_APPS = [
     'config',
     'loans',
     'resignations',
+    'refunds',
+    'verifications',
 ]
 
 MIDDLEWARE = [
