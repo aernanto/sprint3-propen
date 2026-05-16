@@ -259,16 +259,41 @@ class ManagerResignationStatusUpdateView(APIView):
                 resignation.total_savings_snapshot = settlement['total_savings']
                 resignation.total_loan_outstanding_snapshot = settlement['total_loan_outstanding']
                 resignation.estimated_payout = settlement['estimated_payout']
-                resignation.status = ResignationStatus.APPROVED
                 resignation.rejection_reason = ''
-                resignation.save()
 
-                # Create refund record for staff to disburse
-                try:
+                # Edge case: nothing to disburse — skip the staff refund step entirely
+                # and close the account immediately so the member doesn't get stuck
+                # at "Disetujui — Menunggu Pencairan" forever.
+                if settlement['estimated_payout'] <= 0:
+                    resignation.status = ResignationStatus.RESIGNED
+                    resignation.resolved_at = timezone.now()
+                    resignation.save()
+
+                    member = resignation.member
+                    member.status = 'INACTIVE'
+                    member.save(update_fields=['status'])
+
+                    if hasattr(member, 'user') and member.user:
+                        member.user.is_active = False
+                        member.user.save(update_fields=['is_active'])
+
+                    balance = getattr(member, 'savings_balance', None)
+                    if balance is not None:
+                        balance.total_pokok = 0
+                        balance.total_wajib = 0
+                        balance.total_sukarela = 0
+                        balance.save(update_fields=[
+                            'total_pokok', 'total_wajib', 'total_sukarela', 'last_updated',
+                        ])
+                else:
+                    resignation.status = ResignationStatus.APPROVED
+                    resignation.save()
+
+                    # Refund creation must succeed for the approval to commit —
+                    # otherwise the member is stuck APPROVED with nothing for staff
+                    # to disburse. Let exceptions propagate so the atomic block rolls back.
                     from refunds.services import create_refund_from_resignation
                     create_refund_from_resignation(resignation)
-                except Exception:
-                    pass
 
             else:
                 resignation.status = ResignationStatus.REJECTED

@@ -38,7 +38,7 @@ class Refund(models.Model):
         related_name='disbursed_refunds',
     )
     disbursed_at = models.DateTimeField(null=True, blank=True)
-    transfer_proof = models.ImageField(upload_to='refunds/proofs/', null=True, blank=True)
+    transfer_proof = models.FileField(upload_to='refunds/proofs/', null=True, blank=True)
     notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
