@@ -66,7 +66,14 @@ class MemberProfileView(APIView):
             serializer = MemberProfileSerializer(member, context={'request': request})
             return Response({**serializer.data, 'is_member': True})
         except Member.DoesNotExist:
-            return Response({'error': 'Profil tidak ditemukan'}, status=404)
+            return Response({
+                'id': user.id,
+                'email': user.email,
+                'role': user.role,
+                'full_name': getattr(user, 'full_name', user.email.split('@')[0]),
+                'member_id': None,
+                'is_member': False,
+            })
 
     def patch(self, request):
         """Update informasi profil (telepon, alamat, atau foto)"""
