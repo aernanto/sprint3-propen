@@ -1,9 +1,10 @@
 from decimal import Decimal
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from savings.models import SavingTransaction, SavingsBalance, SavingType, SavingStatus
 from notifications.service import notify_saving_verified, notify_saving_rejected
+from savings.services import _generate_unique_member_id
 
 
 @transaction.atomic
@@ -33,11 +34,14 @@ def approve_saving_transaction(saving: SavingTransaction, staff_user) -> dict:
             member_activated = True
 
             if not member.member_id:
-                active_count = type(member).objects.filter(
-                    status='ACTIVE', member_id__isnull=False
-                ).count()
-                member.member_id = f'MBR-{active_count:04d}'
-                member.save(update_fields=['member_id'])
+                for _attempt in range(5):
+                    try:
+                        member.member_id = _generate_unique_member_id(type(member))
+                        member.save(update_fields=['member_id'])
+                        break
+                    except IntegrityError:
+                        member.member_id = None
+                        continue
 
     elif saving.saving_type == SavingType.WAJIB:
         balance.total_wajib = (balance.total_wajib or Decimal('0')) + saving.amount

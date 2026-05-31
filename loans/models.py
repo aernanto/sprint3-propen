@@ -34,10 +34,12 @@ class InstallmentStatus(models.TextChoices):
 
 
 class BadDebtStatus(models.TextChoices):
-    PENDING          = 'PENDING', 'Pending'
-    WARNING_SENT     = 'WARNING_SENT', 'Warning Sent'
-    LEGAL_NOTICE     = 'LEGAL_NOTICE', 'Legal Notice'
-    VISIT_SCHEDULED  = 'VISIT_SCHEDULED', 'Visit Scheduled'
+    # Urutan eskalasi: PENDING → WARNING_SENT → VISIT_SCHEDULED → LEGAL_NOTICE
+    # (Surat peringatan hukum sebagai langkah terakhir setelah kunjungan dijadwalkan)
+    PENDING          = 'PENDING', 'Belum Ditindaklanjuti'
+    WARNING_SENT     = 'WARNING_SENT', 'Peringatan Terkirim'
+    VISIT_SCHEDULED  = 'VISIT_SCHEDULED', 'Kunjungan Dijadwalkan'
+    LEGAL_NOTICE     = 'LEGAL_NOTICE', 'Surat Peringatan Hukum'
 
 
 class Loan(models.Model):
@@ -112,6 +114,10 @@ class Loan(models.Model):
 
     @property
     def outstanding_balance(self):
+        # Loan yg ditolak / belum dicairkan / sudah lunas → tidak ada saldo terutang
+        if self.status in (LoanStatus.REJECTED, LoanStatus.PENDING,
+                           LoanStatus.LUNAS, LoanStatus.LUNAS_AFTER_OVERDUE):
+            return Decimal('0')
         paid = self.installments.filter(
             status=InstallmentStatus.PAID
         ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
@@ -119,6 +125,10 @@ class Loan(models.Model):
 
     @property
     def next_due_date(self):
+        # Loan yg ditolak/belum cair/lunas tidak punya tagihan aktif
+        if self.status in (LoanStatus.REJECTED, LoanStatus.PENDING,
+                           LoanStatus.LUNAS, LoanStatus.LUNAS_AFTER_OVERDUE):
+            return None
         unpaid = self.installments.filter(
             status__in=[InstallmentStatus.UNPAID, InstallmentStatus.PENDING]
         ).order_by('due_date').first()
@@ -126,6 +136,9 @@ class Loan(models.Model):
 
     @property
     def next_installment_amount(self):
+        if self.status in (LoanStatus.REJECTED, LoanStatus.PENDING,
+                           LoanStatus.LUNAS, LoanStatus.LUNAS_AFTER_OVERDUE):
+            return None
         unpaid = self.installments.filter(
             status__in=[InstallmentStatus.UNPAID, InstallmentStatus.PENDING]
         ).order_by('due_date').first()

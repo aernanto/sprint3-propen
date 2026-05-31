@@ -127,11 +127,14 @@ class LoanDetailSerializer(serializers.ModelSerializer):
             'amount', 'tenor', 'status', 'status_display',
             'outstanding_balance', 'next_due_date', 'next_installment_amount',
             'progress_percent', 'bank_account',
-            'application_date', 'disbursed_at',
+            'application_date', 'disbursed_at', 'description', 'rejection_reason',
             'installments',
         ]
 
     def get_progress_percent(self, obj):
+        # Loan ditolak / belum cair → progress 0 (bukan 100)
+        if obj.status in ('REJECTED', 'PENDING'):
+            return 0
         if obj.amount == 0:
             return 100
         paid = obj.amount - obj.outstanding_balance
@@ -389,11 +392,14 @@ class LoanDetailSerializer(serializers.ModelSerializer):
             'amount', 'tenor', 'status', 'status_display',
             'outstanding_balance', 'next_due_date', 'next_installment_amount',
             'progress_percent', 'bank_account',
-            'application_date', 'disbursed_at',
+            'application_date', 'disbursed_at', 'description', 'rejection_reason',
             'installments',
         ]
 
     def get_progress_percent(self, obj):
+        # Loan ditolak / belum cair → progress 0 (bukan 100)
+        if obj.status in ('REJECTED', 'PENDING'):
+            return 0
         if obj.amount == 0:
             return 100
         paid = obj.amount - obj.outstanding_balance

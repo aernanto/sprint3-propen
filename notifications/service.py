@@ -189,7 +189,7 @@ def notify_registration_pending(member):
         member_redirect_url='/status',
         staff_title='Pendaftaran Anggota Baru',
         staff_message=staff_msg,
-        staff_redirect_url='/dashboard/staff/members/pending',
+        staff_redirect_url='/dashboard/staff/verification',
         broadcast_to='STAFF',
         email_subject_member='Pendaftaran Anda Telah Diterima',
         email_body_member=email_member,
@@ -220,7 +220,7 @@ def notify_registration_verified(member):
         notif_type='REGISTRATION',
         member_title='Pendaftaran Disetujui',
         member_message=member_msg,
-        member_redirect_url='/dashboard/member',
+        member_redirect_url='/dashboard/member/savings',
         staff_title='',
         staff_message='',
         staff_redirect_url='',
@@ -302,10 +302,10 @@ def notify_saving_received(saving):
         notif_type='SAVING',
         member_title='Setoran Diterima',
         member_message=member_msg,
-        member_redirect_url='/savings',
+        member_redirect_url='/dashboard/member/savings',
         staff_title='Setoran Simpanan Baru',
         staff_message=staff_msg,
-        staff_redirect_url='/dashboard/staff/savings/pending',
+        staff_redirect_url='/dashboard/staff/verifications/savings',
         broadcast_to='STAFF',
         email_subject_member='Setoran Anda Telah Diterima',
         email_body_member=email_member,
@@ -334,7 +334,7 @@ def notify_saving_verified(saving):
         notif_type='SAVING',
         member_title='Setoran Terverifikasi',
         member_message=member_msg,
-        member_redirect_url='/savings',
+        member_redirect_url='/dashboard/member/savings',
         staff_title='', staff_message='', staff_redirect_url='',
         broadcast_to=None,
         email_subject_member='Setoran Anda Telah Diverifikasi',
@@ -366,7 +366,7 @@ def notify_saving_rejected(saving, reason=''):
         notif_type='SAVING',
         member_title='Setoran Ditolak',
         member_message=member_msg,
-        member_redirect_url='/savings',
+        member_redirect_url='/dashboard/member/savings',
         staff_title='', staff_message='', staff_redirect_url='',
         broadcast_to=None,
         email_subject_member='Setoran Anda Ditolak',
@@ -417,7 +417,7 @@ def notify_loan_submitted(loan):
         member_redirect_url=f'/dashboard/member/loans/{loan.id}',
         staff_title='Pengajuan Pinjaman Baru',
         staff_message=manager_msg,
-        staff_redirect_url='/dashboard/manager/loans/pending',
+        staff_redirect_url='/dashboard/manager/loans',
         broadcast_to='MANAGER',
         email_subject_member='Pengajuan Pinjaman Anda Telah Diterima',
         email_body_member=email_member,
@@ -464,7 +464,7 @@ def notify_loan_approved(loan):
         member_redirect_url=f'/dashboard/member/loans/{loan.id}',
         staff_title='Pinjaman Menunggu Pencairan',
         staff_message=staff_msg,
-        staff_redirect_url='/dashboard/staff/loans/approved',
+        staff_redirect_url='/dashboard/staff/disbursement',
         broadcast_to='STAFF',
         email_subject_member='Pinjaman Anda Telah Disetujui',
         email_body_member=email_member,
@@ -576,7 +576,7 @@ def notify_installment_submitted(installment):
         member_redirect_url=f'/dashboard/member/loans/{loan.id}',
         staff_title='Pembayaran Cicilan Baru',
         staff_message=staff_msg,
-        staff_redirect_url='/dashboard/staff/installments/pending',
+        staff_redirect_url='/dashboard/staff/installments',
         broadcast_to='STAFF',
         email_subject_member='Pembayaran Cicilan Anda Telah Dikirim',
         email_body_member=email_member,
@@ -715,14 +715,78 @@ def notify_loan_overdue(loan):
         member_redirect_url=f'/dashboard/member/loans/{loan.id}',
         staff_title='Pinjaman Overdue',
         staff_message=staff_msg,
-        staff_redirect_url='/dashboard/staff/loans/overdue',
-        broadcast_to='STAFF',
+        staff_redirect_url='/dashboard/manager/credit',
+        broadcast_to='MANAGER',
         email_subject_member='Pinjaman Anda Overdue',
         email_body_member=email_member,
         email_subject_staff='Pinjaman Masuk Status Overdue',
         email_body_staff=email_staff,
     )
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MANDATORY SAVINGS REMINDER (Simpanan Wajib bulanan)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def notify_wajib_reminder_upcoming(member, days_left: int):
+    """
+    Reminder simpanan wajib mendekati jatuh tempo (H-7 sebelum akhir bulan).
+    """
+    member_msg = (
+        f'Pengingat: simpanan wajib bulan ini akan jatuh tempo dalam {days_left} hari. '
+        'Silakan lakukan setoran agar tidak terlewat.'
+    )
+    email_member = (
+        f'Yth. {member.full_name},\n\n'
+        f'Ini adalah pengingat bahwa setoran simpanan wajib Anda untuk bulan ini '
+        f'akan jatuh tempo dalam {days_left} hari.\n\n'
+        'Silakan segera lakukan setoran melalui aplikasi SI-MAPAN untuk menghindari keterlambatan.\n\n'
+        'Salam,\nTim SI-MAPAN'
+    )
+
+    _broadcast(
+        member_user=member.user,
+        member_email=member.user.email,
+        notif_type='SAVING',
+        member_title='Pengingat Simpanan Wajib',
+        member_message=member_msg,
+        member_redirect_url='/dashboard/member/savings/deposit',
+        staff_title='', staff_message='', staff_redirect_url='',
+        broadcast_to=None,
+        email_subject_member='Pengingat: Simpanan Wajib Mendekati Jatuh Tempo',
+        email_body_member=email_member,
+    )
+
+
+def notify_wajib_reminder_overdue(member, month_label: str):
+    """
+    Reminder simpanan wajib OVERDUE (H+1 setelah akhir bulan, belum disetor).
+    """
+    member_msg = (
+        f'Setoran simpanan wajib untuk bulan {month_label} belum kami terima. '
+        'Mohon segera lakukan setoran untuk memenuhi kewajiban Anda sebagai anggota.'
+    )
+    email_member = (
+        f'Yth. {member.full_name},\n\n'
+        f'Setoran simpanan wajib Anda untuk bulan {month_label} '
+        'telah melewati tanggal jatuh tempo dan belum kami terima.\n\n'
+        'Mohon segera lakukan setoran melalui aplikasi SI-MAPAN.\n\n'
+        'Salam,\nTim SI-MAPAN'
+    )
+
+    _broadcast(
+        member_user=member.user,
+        member_email=member.user.email,
+        notif_type='SAVING',
+        member_title='Simpanan Wajib Terlambat',
+        member_message=member_msg,
+        member_redirect_url='/dashboard/member/savings/deposit',
+        staff_title='', staff_message='', staff_redirect_url='',
+        broadcast_to=None,
+        email_subject_member='Simpanan Wajib Anda Sudah Lewat Jatuh Tempo',
+        email_body_member=email_member,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -760,10 +824,10 @@ def notify_resignation_received(resignation):
         notif_type='RESIGNATION',
         member_title='Permintaan Pengunduran Diri Diterima',
         member_message=member_msg,
-        member_redirect_url='/dashboard/member/resignation',
+        member_redirect_url='/dashboard/member/resignations',
         staff_title='Permintaan Pengunduran Diri Baru',
         staff_message=manager_msg,
-        staff_redirect_url='/dashboard/manager/resignations/pending',
+        staff_redirect_url='/dashboard/manager/resignations',
         broadcast_to='MANAGER',
         email_subject_member='Permintaan Pengunduran Diri Anda Telah Diterima',
         email_body_member=email_member,
