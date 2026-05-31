@@ -1,7 +1,3 @@
-"""
-URL configuration for simapan project.
-"""
-
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -24,11 +20,7 @@ urlpatterns = [
     path('api/staff/members/', include('members.staff_urls')),
     path('api/staff/loans/', include('loans.staff_urls')),
     path('api/staff/installments/', include('loans.staff_installment_urls')),
-    path('api/staff/withdrawals/', include('savings.staff_urls')),
-    path('api/v1/staff/withdrawals/', include('savings.staff_urls')),
     path('api/staff/refunds/', include('refunds.urls')),
-
-    # Manager / chairman
     path('api/manager/loans/', include('loans.manager_urls')),
     path('api/chairman/', include('loans.chairman_urls')),
     path('api/manager/resignations/', include('resignations.manager_urls')),
@@ -41,4 +33,5 @@ urlpatterns = [
     path('api/loans/', include('loans.urls')),
     path('api/installments/', include('loans.pay_urls')),
     path('api/resignations/', include('resignations.urls')),
+    path('api/manager/resignations/', include('resignations.manager_urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
