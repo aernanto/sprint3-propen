@@ -829,3 +829,80 @@ def notify_resignation_rejected(resignation, reason=''):
         email_subject_member='Permintaan Pengunduran Diri Anda Ditolak',
         email_body_member=email_member,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# REFUNDS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def notify_refund_completed(refund):
+    """
+    Staff cairkan dana pengembalian → member dapet notif + email.
+    Refund dapat berasal dari: (a) Pembayaran cicilan ditolak, (b) Pengunduran diri disetujui.
+    """
+    from refunds.models import RefundSourceType
+
+    member = refund.member
+    source_label = refund.get_source_type_display()
+    
+    if refund.source_type == RefundSourceType.INSTALLMENT and refund.installment:
+        loan_id = refund.installment.loan.loan_id
+        member_msg = (
+            f'Dana pengembalian untuk pinjaman {loan_id} (pembayaran cicilan ditolak) '
+            f'senilai Rp {refund.amount:,.0f} telah dicairkan ke rekening bank Anda.'
+        )
+        email_member = (
+            f'Yth. {member.full_name},\n\n'
+            f'Dana pengembalian untuk pinjaman {loan_id} '
+            '(pembayaran cicilan yang ditolak) '
+            f'senilai Rp {refund.amount:,.0f} telah dicairkan ke rekening bank Anda.\n\n'
+            'Silakan cek saldo rekening Anda dalam waktu 1-2 hari kerja.\n\n'
+            'Salam,\nTim SI-MAPAN'
+        )
+        member_title = 'Pengembalian Dana Pinjaman Dicairkan'
+    else:  # RESIGNATION
+        member_msg = (
+            f'Dana pengembalian simpanan dari pengunduran diri Anda '
+            f'senilai Rp {refund.amount:,.0f} telah dicairkan ke rekening bank Anda.'
+        )
+        email_member = (
+            f'Yth. {member.full_name},\n\n'
+            f'Dana pengembalian simpanan dari pengunduran diri Anda '
+            f'senilai Rp {refund.amount:,.0f} telah dicairkan ke rekening bank Anda.\n\n'
+            'Silakan cek saldo rekening Anda dalam waktu 1-2 hari kerja.\n\n'
+            'Terima kasih atas partisipasi Anda di SI-MAPAN.\n\n'
+            'Salam,\nTim SI-MAPAN'
+        )
+        member_title = 'Pengembalian Dana Pengunduran Diri Dicairkan'
+
+    staff_msg = (
+        f'Dana pengembalian untuk {member.full_name} '
+        f'({source_label}, Rp {refund.amount:,.0f}) '
+        'telah dicairkan.'
+    )
+    email_staff = (
+        f'Dana pengembalian berikut telah dicairkan:\n\n'
+        f'Anggota        : {member.full_name}\n'
+        f'Jenis          : {source_label}\n'
+        f'Nominal        : Rp {refund.amount:,.0f}\n'
+        f'Tanggal Cairkan: {refund.disbursed_at.strftime("%d-%m-%Y %H:%M") if refund.disbursed_at else "-"}\n'
+        f'Petugas        : {refund.disbursed_by.email if refund.disbursed_by else "-"}\n\n'
+        'Salam,\nSistem SI-MAPAN'
+    )
+
+    _broadcast(
+        member_user=member.user,
+        member_email=member.user.email,
+        notif_type='REFUND',
+        member_title=member_title,
+        member_message=member_msg,
+        member_redirect_url='/dashboard/member',
+        staff_title='Dana Pengembalian Dicairkan',
+        staff_message=staff_msg,
+        staff_redirect_url='/dashboard/staff/refunds',
+        broadcast_to='STAFF',
+        email_subject_member='Dana Pengembalian Anda Telah Dicairkan',
+        email_body_member=email_member,
+        email_subject_staff='Dana Pengembalian Dicairkan',
+        email_body_staff=email_staff,
+    )

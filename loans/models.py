@@ -1,5 +1,6 @@
 from django.db import models, transaction
 from django.utils import timezone
+from decimal import Decimal
 from members.models import Member, BankAccount
 from users.models import User
 from decimal import Decimal

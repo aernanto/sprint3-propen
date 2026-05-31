@@ -2,9 +2,16 @@ from enum import member
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import MemberRegisterSerializer, MemberProfileSerializer, BankAccountSerializer
 from .models import Member, BankAccount
+from users.models import User
+from decimal import Decimal
+from django.db.models import Sum
+
+from savings.models import SavingTransaction, SavingsBalance, SavingStatus
+from loans.models import Loan, Installment, LoanStatus, InstallmentStatus
 
 
 class MemberRegisterView(APIView):
@@ -34,13 +41,16 @@ class MemberStatusView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        email = request.query_params.get('email')
+        email = request.query_params.get('email', '').strip()
         if not email:
             return Response({'error': 'Email wajib diisi'}, status=400)
         try:
-            member = Member.objects.get(user__email=email)
-            return Response({'email': email, 'status': member.status})
-        except Member.DoesNotExist:
+            user = User.objects.select_related('member').get(email__iexact=email)
+            if hasattr(user, 'member'):
+                return Response({'email': user.email, 'status': user.member.status})
+            account_status = 'ACTIVE' if user.is_active else 'INACTIVE'
+            return Response({'email': user.email, 'status': account_status, 'role': user.role})
+        except User.DoesNotExist:
             return Response({'error': 'Email tidak ditemukan'}, status=404)
 
 
@@ -193,3 +203,87 @@ class MemberBankAccountDetailView(APIView):
                 fallback_account.save(update_fields=['is_primary'])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class MemberDashboardView(APIView):
+    """
+    PBI-39 - Lihat Dashboard Anggota
+    GET /api/dashboards/member/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            member = request.user.member
+        except Exception:
+            return Response({'error': 'Member profile not found'}, status=404)
+
+        # 1. Total Simpanan 
+        balance = getattr(member, 'savings_balance', None)
+        if balance:
+            total_savings = balance.total_overall
+        else:
+            total_savings = SavingTransaction.objects.filter(
+                member=member, status=SavingStatus.SUCCESS
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+        # 2. Total Pinjaman Aktif (outstanding) 
+        active_loans = member.loans.filter(
+            status__in=[LoanStatus.ACTIVE, LoanStatus.OVERDUE]
+        )
+        total_loan = sum(loan.outstanding_balance for loan in active_loans)
+
+        # Recent Transactions
+        # a) Saving transactions
+        saving_txs = SavingTransaction.objects.filter(
+            member=member
+        ).order_by('-submitted_at')[:20]
+
+        saving_items = []
+        for tx in saving_txs:
+            type_label = {
+                'POKOK': 'Simpanan Pokok',
+                'WAJIB': 'Simpanan Wajib',
+                'SUKARELA': 'Simpanan Sukarela',
+            }.get(tx.saving_type, tx.saving_type)
+
+            saving_items.append({
+                'transaction_id': tx.transaction_id,
+                'date': tx.submitted_at.isoformat() if tx.submitted_at else None,
+                'description': f'Setoran {type_label}',
+                'type': 'CREDIT',
+                'amount': str(tx.amount),
+                'status': tx.status,
+                'source': 'SAVING',
+            })
+
+        # b) Installment payments (PAID dan PENDING)
+        installments = Installment.objects.filter(
+            loan__member=member,
+            status__in=[InstallmentStatus.PAID, InstallmentStatus.PENDING],
+        ).select_related('loan').order_by('-submitted_at')[:20]
+
+        installment_items = []
+        for ins in installments:
+            installment_items.append({
+                'transaction_id': ins.transaction_id or f'TRX-INS-{ins.id:05d}',
+                'date': (ins.submitted_at or ins.updated_at).isoformat(),
+                'description': f'Angsuran Pinjaman #{ins.loan.loan_id} (Cicilan {ins.installment_number})',
+                'type': 'DEBIT',
+                'amount': str(ins.amount),
+                'status': ins.status,
+                'source': 'INSTALLMENT',
+            })
+
+        # c) Gabungkan dan sort by date descending, ambil 10 terbaru
+        all_transactions = saving_items + installment_items
+        all_transactions.sort(
+            key=lambda x: x['date'] or '',
+            reverse=True
+        )
+        recent_transactions = all_transactions[:10]
+
+        return Response({
+            'total_savings': str(total_savings),
+            'total_loan': str(total_loan),
+            'recent_transactions': recent_transactions,
+        })

@@ -9,11 +9,13 @@ from rest_framework.views import APIView
 
 from config.models import CooperativeBank
 from loans.models import Installment, InstallmentStatus
-from savings.models import SavingStatus, SavingTransaction, SavingType, SavingsBalance
+from savings.models import SavingStatus, SavingTransaction, SavingType, SavingsBalance, SavingsWithdrawal, WithdrawalStatus
 from savings.serializers import (
 	DepositCreateSerializer,
 	InitialDepositCreateSerializer,
 	SavingTransactionSerializer,
+	WithdrawalCreateSerializer,
+	WithdrawalSerializer,
 )
 
 
@@ -216,6 +218,51 @@ class SavingsOverviewView(BaseMemberSavingsView):
 			})
 
 		combined_items.extend(loan_savings_items)
+
+		# Add withdrawal items
+		if member.status == 'ACTIVE':
+			withdrawals_qs = SavingsWithdrawal.objects.filter(member=member)
+			
+			status_filter = request.query_params.get('status')
+			if status_filter:
+				# Map frontend status to withdrawal status
+				if status_filter.upper() == 'PENDING':
+					withdrawals_qs = withdrawals_qs.filter(status=WithdrawalStatus.PENDING)
+				elif status_filter.upper() == 'SUCCESS':
+					withdrawals_qs = withdrawals_qs.filter(status=WithdrawalStatus.COMPLETED)
+				elif status_filter.upper() == 'REJECTED':
+					withdrawals_qs = withdrawals_qs.none()  # Withdrawals don't have rejected status
+
+			for withdrawal in withdrawals_qs:
+				# Map withdrawal status to saving status for consistency
+				mapped_status = SavingStatus.PENDING if withdrawal.status == WithdrawalStatus.PENDING else SavingStatus.SUCCESS
+				
+				# Build transfer_proof_url
+				transfer_proof_url = None
+				if withdrawal.transfer_proof:
+					transfer_proof_url = request.build_absolute_uri(withdrawal.transfer_proof.url)
+				
+				combined_items.append({
+					'id': -withdrawal.id,
+					'saving_id': withdrawal.withdrawal_id,
+					'transaction_id': withdrawal.withdrawal_id,
+					'saving_type': SavingType.SUKARELA,
+					'amount': str(withdrawal.amount),
+					'status': mapped_status,
+					'transfer_proof': None,
+					'transfer_proof_url': transfer_proof_url,
+					'member_bank_name': withdrawal.bank_name,
+					'member_account_number': withdrawal.account_number,
+					'rejection_reason': '',
+					'submitted_at': withdrawal.created_at.isoformat(),
+					'direction': 'OUT',
+					'source': 'SAVINGS_WITHDRAWAL',
+					'description': f'Penarikan simpanan sukarela ke {withdrawal.bank_name}',
+					'loan_pk': None,
+					'loan_id': None,
+					'installment_number': None,
+				})
+
 		combined_items.sort(key=lambda item: item.get('submitted_at') or '', reverse=True)
 
 		balance = SavingsBalance.objects.filter(member=member).first()
@@ -245,3 +292,63 @@ class SavingsOverviewView(BaseMemberSavingsView):
 		paginated['bank_account'] = bank_data
 
 		return Response(paginated)
+
+
+# ── Withdrawal views ───────────────────────────────────────────────────────
+
+class WithdrawalBalanceView(BaseMemberSavingsView):
+	def get(self, request):
+		if not self.ensure_member_role(request.user):
+			return Response({'detail': 'Hanya anggota yang dapat mengakses saldo simpanan'}, status=status.HTTP_403_FORBIDDEN)
+
+		member = self.get_member(request.user)
+		if not member:
+			return Response({'detail': 'Profil anggota tidak ditemukan'}, status=status.HTTP_404_NOT_FOUND)
+
+		if member.status != 'ACTIVE':
+			return Response(
+				{'detail': 'Hanya anggota berstatus ACTIVE yang dapat melakukan penarikan'},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+
+		try:
+			balance = member.savings_balance
+			total_sukarela = balance.total_sukarela
+		except Exception:
+			total_sukarela = 0
+
+		return Response({'total_sukarela': str(total_sukarela)})
+
+
+class WithdrawalCreateView(BaseMemberSavingsView):
+	def post(self, request):
+		if not self.ensure_member_role(request.user):
+			return Response({'detail': 'Hanya anggota yang dapat melakukan penarikan'}, status=status.HTTP_403_FORBIDDEN)
+
+		member = self.get_member(request.user)
+		if not member:
+			return Response({'detail': 'Profil anggota tidak ditemukan'}, status=status.HTTP_404_NOT_FOUND)
+
+		if member.status != 'ACTIVE':
+			return Response(
+				{'detail': 'Hanya anggota berstatus ACTIVE yang dapat melakukan penarikan'},
+				status=status.HTTP_400_BAD_REQUEST,
+			)
+
+		serializer = WithdrawalCreateSerializer(data=request.data, context={'request': request})
+		serializer.is_valid(raise_exception=True)
+		withdrawal = serializer.save()
+
+		try:
+			from notifications.service import notify_withdrawal_received
+			notify_withdrawal_received(withdrawal)
+		except Exception:
+			pass
+
+		return Response(
+			{
+				'message': 'Permintaan penarikan simpanan sukarela berhasil diajukan dan sedang diproses',
+				'data': WithdrawalSerializer(withdrawal, context={'request': request}).data,
+			},
+			status=status.HTTP_201_CREATED,
+		)

@@ -11,6 +11,10 @@ class SavingStatus(models.TextChoices):
     SUCCESS = 'SUCCESS', 'Success'
     REJECTED = 'REJECTED', 'Rejected'
 
+class WithdrawalStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    COMPLETED = 'COMPLETED', 'Completed'
+
 class SavingsBalance(models.Model):
     member = models.OneToOneField('members.Member', on_delete=models.CASCADE, related_name='savings_balance')
     total_pokok = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -95,3 +99,39 @@ class SavingTransaction(models.Model):
                 activated = True
             
             return {'member_activated': activated, 'balance': balance}
+
+
+class SavingsWithdrawal(models.Model):
+    member = models.ForeignKey('members.Member', on_delete=models.CASCADE, related_name='savings_withdrawals')
+    withdrawal_id = models.CharField(max_length=50, unique=True, blank=True)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    bank_name = models.CharField(max_length=100)
+    account_number = models.CharField(max_length=50)
+    account_holder = models.CharField(max_length=150)
+    notes = models.TextField(blank=True)
+    transfer_proof = models.FileField(upload_to='loans/disbursement/', null=True, blank=True)
+    status = models.CharField(max_length=20, choices=WithdrawalStatus.choices, default=WithdrawalStatus.PENDING)
+    processed_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='processed_withdrawals',
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.withdrawal_id} - {self.member.full_name}'
+
+    def save(self, *args, **kwargs):
+        if not self.withdrawal_id:
+            from django.utils import timezone
+            year = timezone.now().year
+            seq = SavingsWithdrawal.objects.filter(created_at__year=year).count() + 1
+            self.withdrawal_id = f'WD-{year}-{seq:05d}'
+        super().save(*args, **kwargs)

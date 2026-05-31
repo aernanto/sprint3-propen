@@ -1,3 +1,5 @@
+import re
+from datetime import date
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from users.models import User
@@ -25,16 +27,39 @@ class MemberRegisterSerializer(serializers.Serializer):
     password       = serializers.CharField(write_only=True, validators=[validate_password])
     confirm_password = serializers.CharField(write_only=True)
 
+    def validate_phone_number(self, value):
+        if not re.fullmatch(r'08\d{8,11}', value):
+            raise serializers.ValidationError(
+                'Nomor telepon harus diawali 08 dan terdiri dari 10–13 digit angka'
+            )
+        return value
+
+    def validate_postal_code(self, value):
+        if not re.fullmatch(r'\d{5}', value):
+            raise serializers.ValidationError('Kode pos harus berupa 5 digit angka')
+        return value
+
     def validate_nik(self, value):
+        if not re.fullmatch(r'\d{16}', value):
+            raise serializers.ValidationError('NIK harus berupa 16 digit angka')
         if Member.objects.filter(nik=value).exists():
             raise serializers.ValidationError('NIK sudah terdaftar')
+        return value
+
+    def validate_date_of_birth(self, value):
+        today = date.today()
+        if value >= today:
+            raise serializers.ValidationError('Tanggal lahir tidak valid')
+        age = today.year - value.year - ((today.month, today.day) < (value.month, value.day))
+        if age < 17:
+            raise serializers.ValidationError('Pendaftar harus berusia minimal 17 tahun')
         return value
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('Email sudah terdaftar')
         return value
-    
+
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({'confirm_password': 'Password tidak cocok'})
