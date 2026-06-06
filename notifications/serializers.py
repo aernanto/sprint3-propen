@@ -18,13 +18,15 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 
 class NotificationListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for the list endpoint — no full message body."""
+    """Lightweight serializer for the list endpoint.
+    Include `message` supaya FE bisa search berdasarkan isi notifikasi (PBI-14)."""
     class Meta:
         model = Notification
         fields = [
             'id',
             'type',
             'title',
+            'message',
             'is_read',
             'redirect_url',
             'created_at',
