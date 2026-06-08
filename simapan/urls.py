@@ -18,6 +18,7 @@ urlpatterns = [
 
     # Staff
     path('api/staff/members/', include('members.staff_urls')),
+    path('api/staff/withdrawals/', include('savings.staff_urls')),
     path('api/staff/loans/', include('loans.staff_urls')),
     path('api/staff/installments/', include('loans.staff_installment_urls')),
     path('api/staff/refunds/', include('refunds.urls')),

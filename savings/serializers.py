@@ -2,11 +2,19 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from savings.models import SavingTransaction, SavingType, SavingsWithdrawal
+from savings.models import (
+    MandatorySavingObligation,
+    MandatorySavingPaymentMethod,
+    SavingTransaction,
+    SavingType,
+    SavingsWithdrawal,
+)
+from savings.services import attach_mandatory_obligation_to_transaction, get_next_mandatory_obligation
 
 
 class SavingTransactionSerializer(serializers.ModelSerializer):
     transfer_proof_url = serializers.SerializerMethodField()
+    mandatory_obligation = serializers.SerializerMethodField()
 
     class Meta:
         model = SavingTransaction
@@ -19,6 +27,7 @@ class SavingTransactionSerializer(serializers.ModelSerializer):
             'status',
             'transfer_proof',
             'transfer_proof_url',
+            'mandatory_obligation',
             'member_bank_name',
             'member_account_number',
             'rejection_reason',
@@ -33,6 +42,55 @@ class SavingTransactionSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.transfer_proof.url)
         return obj.transfer_proof.url
+
+    def get_mandatory_obligation(self, obj):
+        if not obj.mandatory_obligation:
+            return None
+        return MandatorySavingObligationSerializer(obj.mandatory_obligation, context=self.context).data
+
+
+class MandatorySavingObligationSerializer(serializers.ModelSerializer):
+    period_label = serializers.SerializerMethodField()
+    payment_transaction_id = serializers.SerializerMethodField()
+    payment_method_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MandatorySavingObligation
+        fields = (
+            'id',
+            'period_start',
+            'period_label',
+            'due_date',
+            'amount',
+            'status',
+            'payment_method',
+            'payment_method_display',
+            'payment_transaction_id',
+            'paid_at',
+            'reminder_sent_at',
+            'overdue_notified_at',
+        )
+
+    def get_period_label(self, obj):
+        return obj.period_start.strftime('%B %Y')
+
+    def get_payment_transaction_id(self, obj):
+        return obj.payment_transaction_id
+
+    def get_payment_method_display(self, obj):
+        return dict(MandatorySavingPaymentMethod.choices).get(obj.payment_method, obj.payment_method)
+
+
+class MandatorySavingsSummarySerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    overdue_count = serializers.IntegerField()
+    overdue_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    next_due_date = serializers.DateField(allow_null=True)
+    available_sukarela = serializers.DecimalField(max_digits=14, decimal_places=2)
+    due_soon_count = serializers.IntegerField()
+    auto_debit_required = serializers.BooleanField()
+    auto_debit_pending = serializers.BooleanField()
+    results = MandatorySavingObligationSerializer(many=True)
 
 
 class InitialDepositCreateSerializer(serializers.ModelSerializer):
@@ -84,14 +142,19 @@ class DepositCreateSerializer(serializers.ModelSerializer):
         amount = attrs['amount']
 
         if saving_type == SavingType.WAJIB:
-            attrs['amount'] = Decimal('100000.00')
+            obligation = get_next_mandatory_obligation(self.context['request'].user.member, allow_advance=True)
+            self.mandatory_obligation = obligation
+            attrs['amount'] = obligation.amount
         elif amount <= 0:
             raise serializers.ValidationError('Jumlah setoran harus lebih dari 0')
 
         return attrs
 
     def create(self, validated_data):
-        return SavingTransaction.objects.create(member=self.context['request'].user.member, **validated_data)
+        saving = SavingTransaction.objects.create(member=self.context['request'].user.member, **validated_data)
+        if getattr(self, 'mandatory_obligation', None):
+            attach_mandatory_obligation_to_transaction(saving)
+        return saving
 
 
 # ── Withdrawal serializers ─────────────────────────────────────────────────

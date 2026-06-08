@@ -13,10 +13,13 @@ from savings.models import SavingStatus, SavingTransaction, SavingType, SavingsB
 from savings.serializers import (
 	DepositCreateSerializer,
 	InitialDepositCreateSerializer,
+	MandatorySavingObligationSerializer,
+	MandatorySavingsSummarySerializer,
 	SavingTransactionSerializer,
 	WithdrawalCreateSerializer,
 	WithdrawalSerializer,
 )
+from savings.services import get_mandatory_savings_summary, sync_member_mandatory_savings
 
 
 class SavingsPagination(PageNumberPagination):
@@ -133,6 +136,8 @@ class SavingsOverviewView(BaseMemberSavingsView):
 		member = self.get_member(request.user)
 		if not member:
 			return Response({'detail': 'Profil anggota tidak ditemukan'}, status=status.HTTP_404_NOT_FOUND)
+
+		sync_member_mandatory_savings(member)
 
 		bank_account = CooperativeBank.objects.filter(is_active=True).first()
 		bank_data = None
@@ -263,6 +268,14 @@ class SavingsOverviewView(BaseMemberSavingsView):
 					'installment_number': None,
 				})
 
+		source_filter = request.query_params.get('source')
+		if source_filter:
+			allowed_sources = {value.strip().upper() for value in source_filter.split(',') if value.strip()}
+			combined_items = [
+				item for item in combined_items
+				if str(item.get('source', '')).upper() in allowed_sources
+			]
+
 		combined_items.sort(key=lambda item: item.get('submitted_at') or '', reverse=True)
 
 		balance = SavingsBalance.objects.filter(member=member).first()
@@ -281,6 +294,11 @@ class SavingsOverviewView(BaseMemberSavingsView):
 			total_wajib = next((item['total'] for item in totals if item['saving_type'] == SavingType.WAJIB), 0)
 			total_sukarela = next((item['total'] for item in totals if item['saving_type'] == SavingType.SUKARELA), 0)
 
+		mandatory_summary = MandatorySavingsSummarySerializer(
+			get_mandatory_savings_summary(member),
+			context={'request': request},
+		).data
+
 		paginator = SavingsPagination()
 		page = paginator.paginate_queryset(combined_items, request, view=self)
 		paginated = paginator.get_paginated_response(page).data
@@ -289,6 +307,8 @@ class SavingsOverviewView(BaseMemberSavingsView):
 			'wajib': f'{total_wajib}',
 			'sukarela': f'{total_sukarela}',
 		}
+		paginated['mandatory_savings'] = mandatory_summary
+		paginated['sukarela_balance'] = f'{total_sukarela}'
 		paginated['bank_account'] = bank_data
 
 		return Response(paginated)

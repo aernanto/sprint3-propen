@@ -177,11 +177,22 @@ class LoanCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        from .services import has_bad_debt
+        from .services import has_bad_debt, calculate_max_loan_from_savings
         member = self.context['request'].user.member
         if has_bad_debt(member):
             raise serializers.ValidationError(
                 'Anda memiliki kredit macet dan tidak dapat mengajukan pinjaman baru.'
+            )
+        tenor = attrs.get('tenor', 12)
+        max_loan = calculate_max_loan_from_savings(member, tenor)
+        if max_loan < 1_000_000:
+            raise serializers.ValidationError(
+                'Simpanan Anda belum mencukupi untuk mengajukan pinjaman.'
+            )
+        if attrs.get('amount', 0) > max_loan:
+            formatted = f"Rp {int(max_loan):,}".replace(',', '.')
+            raise serializers.ValidationError(
+                f'Jumlah pinjaman melebihi batas maksimal berdasarkan simpanan Anda ({formatted}).'
             )
         return attrs
 
@@ -442,11 +453,22 @@ class LoanCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        from .services import has_bad_debt
+        from .services import has_bad_debt, calculate_max_loan_from_savings
         member = self.context['request'].user.member
         if has_bad_debt(member):
             raise serializers.ValidationError(
                 'Anda memiliki kredit macet dan tidak dapat mengajukan pinjaman baru.'
+            )
+        tenor = attrs.get('tenor', 12)
+        max_loan = calculate_max_loan_from_savings(member, tenor)
+        if max_loan < 1_000_000:
+            raise serializers.ValidationError(
+                'Simpanan Anda belum mencukupi untuk mengajukan pinjaman.'
+            )
+        if attrs.get('amount', 0) > max_loan:
+            formatted = f"Rp {int(max_loan):,}".replace(',', '.')
+            raise serializers.ValidationError(
+                f'Jumlah pinjaman melebihi batas maksimal berdasarkan simpanan Anda ({formatted}).'
             )
         return attrs
 

@@ -100,7 +100,7 @@ class MemberProfileSerializer(serializers.ModelSerializer):
         model = Member
         fields = [
             'member_id', 'full_name', 'gender', 'place_of_birth', 
-            'date_of_birth', 'nik', 'email', 'phone_number', 
+            'date_of_birth', 'occupation', 'nik', 'email', 'phone_number', 
             'home_address', 'profile_picture', 'bank_accounts',
             'status'
         ]

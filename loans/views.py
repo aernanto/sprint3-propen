@@ -13,7 +13,7 @@ from .serializers import (
     LoanCreateSerializer,
     LoanSimulationSerializer,
 )
-from .services import calculate_credit_score, has_bad_debt, simulate_installment
+from .services import calculate_credit_score, has_bad_debt, simulate_installment, calculate_max_loan_from_savings
 from members.models import BankAccount
 from members.serializers import BankAccountSerializer
 
@@ -104,13 +104,35 @@ class LoanCreateView(APIView):
             for c in LoanCategory
         ]
 
+        tenor_choices = [6, 12, 24, 36]
+        max_amount_by_tenor = {
+            t: float(calculate_max_loan_from_savings(member, t))
+            for t in tenor_choices
+        }
+
+        from .services import calculate_seasoned_savings
+        from .models import LoanStatus
+
+        balance = getattr(member, 'savings_balance', None)
+        total_savings = float(balance.total_overall) if balance else 0
+        seasoned_savings = float(calculate_seasoned_savings(member))
+
+        active_loans = member.loans.filter(status__in=[LoanStatus.ACTIVE, LoanStatus.OVERDUE])
+        current_monthly_obligations = float(
+            sum(loan.monthly_installment for loan in active_loans) or 0
+        )
+
         return Response({
             'bank_accounts': BankAccountSerializer(bank_accounts, many=True).data,
             'categories': categories,
-            'tenor_choices': [6, 12, 24, 36],
+            'tenor_choices': tenor_choices,
             'interest_rate': 0.5,
             'min_amount': 1_000_000,
-            'max_amount': 50_000_000,
+            'max_amount': max_amount_by_tenor[12],
+            'max_amount_by_tenor': max_amount_by_tenor,
+            'seasoned_savings': seasoned_savings,
+            'total_savings': total_savings,
+            'current_monthly_obligations': current_monthly_obligations,
             'member_status': member.status,
             'has_bad_debt': has_bad_debt(member),
         })

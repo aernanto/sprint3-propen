@@ -724,67 +724,35 @@ def notify_loan_overdue(loan):
     )
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# MANDATORY SAVINGS REMINDER (Simpanan Wajib bulanan)
-# ═══════════════════════════════════════════════════════════════════════════
-
-def notify_wajib_reminder_upcoming(member, days_left: int):
-    """
-    Reminder simpanan wajib mendekati jatuh tempo (H-7 sebelum akhir bulan).
-    """
+def notify_mandatory_saving_reminder(obligation, overdue=False):
+    """Reminder berbasis MandatorySavingObligation (sistem terbaru dari main)."""
+    status_label = 'OVERDUE' if overdue else 'akan jatuh tempo'
     member_msg = (
-        f'Pengingat: simpanan wajib bulan ini akan jatuh tempo dalam {days_left} hari. '
-        'Silakan lakukan setoran agar tidak terlewat.'
+        f'Tagihan simpanan wajib periode {obligation.period_start:%B %Y} {status_label}. '
+        f'Batas pembayaran: {obligation.due_date:%d %b %Y}. '
+        'Silakan lakukan pembayaran sesegera mungkin.'
     )
+
     email_member = (
-        f'Yth. {member.full_name},\n\n'
-        f'Ini adalah pengingat bahwa setoran simpanan wajib Anda untuk bulan ini '
-        f'akan jatuh tempo dalam {days_left} hari.\n\n'
-        'Silakan segera lakukan setoran melalui aplikasi SI-MAPAN untuk menghindari keterlambatan.\n\n'
+        f'Yth. {obligation.member.full_name},\n\n'
+        f'Tagihan simpanan wajib periode {obligation.period_start:%B %Y} '
+        f'{"sudah OVERDUE" if overdue else "akan jatuh tempo"} pada {obligation.due_date:%d %B %Y}.\n\n'
+        'Silakan lakukan pembayaran simpanan wajib Anda agar status kewajiban tetap lancar.\n\n'
         'Salam,\nTim SI-MAPAN'
     )
 
     _broadcast(
-        member_user=member.user,
-        member_email=member.user.email,
+        member_user=obligation.member.user,
+        member_email=obligation.member.user.email,
         notif_type='SAVING',
-        member_title='Pengingat Simpanan Wajib',
+        member_title='Tagihan Simpanan Wajib',
         member_message=member_msg,
-        member_redirect_url='/dashboard/member/savings/deposit',
-        staff_title='', staff_message='', staff_redirect_url='',
+        member_redirect_url='/dashboard/member/savings',
+        staff_title='',
+        staff_message='',
+        staff_redirect_url='',
         broadcast_to=None,
-        email_subject_member='Pengingat: Simpanan Wajib Mendekati Jatuh Tempo',
-        email_body_member=email_member,
-    )
-
-
-def notify_wajib_reminder_overdue(member, month_label: str):
-    """
-    Reminder simpanan wajib OVERDUE (H+1 setelah akhir bulan, belum disetor).
-    """
-    member_msg = (
-        f'Setoran simpanan wajib untuk bulan {month_label} belum kami terima. '
-        'Mohon segera lakukan setoran untuk memenuhi kewajiban Anda sebagai anggota.'
-    )
-    email_member = (
-        f'Yth. {member.full_name},\n\n'
-        f'Setoran simpanan wajib Anda untuk bulan {month_label} '
-        'telah melewati tanggal jatuh tempo dan belum kami terima.\n\n'
-        'Mohon segera lakukan setoran melalui aplikasi SI-MAPAN.\n\n'
-        'Salam,\nTim SI-MAPAN'
-    )
-
-    _broadcast(
-        member_user=member.user,
-        member_email=member.user.email,
-        notif_type='SAVING',
-        member_title='Simpanan Wajib Terlambat',
-        member_message=member_msg,
-        member_redirect_url='/dashboard/member/savings/deposit',
-        staff_title='', staff_message='', staff_redirect_url='',
-        broadcast_to=None,
-        email_subject_member='Simpanan Wajib Anda Sudah Lewat Jatuh Tempo',
+        email_subject_member='Pengingat Simpanan Wajib',
         email_body_member=email_member,
     )
 

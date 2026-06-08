@@ -68,4 +68,4 @@ class SavingsBalanceSerializer(serializers.ModelSerializer):
         fields = ('member_name', 'member_id', 'total_pokok', 'total_wajib', 'total_sukarela', 'total', 'last_updated')
 
     def get_total(self, obj):
-        return str(obj.total)
+        return str(obj.total_overall)
